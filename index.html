@@ -1,0 +1,264 @@
+<html><head><base href="." /><meta charset="UTF-8"><title>Tetris</title><style>
+body {
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(45deg, #ff00ff, #00ffff);
+    font-family: 'Arial', sans-serif;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+.game-container {
+    position: relative;
+    margin-top: 20px;
+}
+
+#gameCanvas {
+    border: 4px solid #ff00ff;
+    box-shadow: 0 0 20px #00ffff;
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.retro-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    background-image: linear-gradient(0deg, rgba(255,0,255,0.2) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0,255,255,0.2) 1px, transparent 1px);
+    background-size: 30px 30px;
+    z-index: -1;
+    animation: gridMove 20s linear infinite;
+}
+
+@keyframes gridMove {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(30px); }
+}
+
+.score {
+    font-size: 24px;
+    color: #fff;
+    text-shadow: 0 0 10px #ff00ff;
+    margin: 20px 0;
+}
+
+.title {
+    font-size: 48px;
+    margin: 20px 0;
+    text-transform: uppercase;
+    letter-spacing: 5px;
+    color: #fff;
+    text-shadow: 
+        3px 3px 0 #ff00ff,
+        -3px -3px 0 #00ffff;
+    animation: glitch 3s infinite;
+}
+
+@keyframes glitch {
+    0% { transform: skew(0deg); }
+    20% { transform: skew(2deg); }
+    40% { transform: skew(-2deg); }
+    60% { transform: skew(1deg); }
+    80% { transform: skew(-1deg); }
+    100% { transform: skew(0deg); }
+}
+</style></head><body>
+<div class="retro-grid"></div>
+<h1 class="title">Tetris</h1>
+<div class="score">Score: <span id="score">0</span></div>
+<div class="game-container">
+    <canvas id="gameCanvas" width="300" height="600"></canvas>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreElement = document.getElementById('score');
+
+const BLOCK_SIZE = 30;
+const COLS = 10;
+const ROWS = 20;
+let score = 0;
+
+// Vaporwave color palette
+const colors = [
+    '#ff71ce', // pink
+    '#01cdfe', // cyan
+    '#05ffa1', // green
+    '#b967ff', // purple
+    '#fffb96'  // yellow
+];
+
+const pieces = [
+    [[1, 1, 1, 1]],     // I
+    [[1, 1], [1, 1]],   // O
+    [[1, 1, 1], [0, 1, 0]], // T
+    [[1, 1, 1], [1, 0, 0]], // L
+    [[1, 1, 1], [0, 0, 1]], // J
+    [[1, 1, 0], [0, 1, 1]], // S
+    [[0, 1, 1], [1, 1, 0]]  // Z
+];
+
+let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+let currentPiece = null;
+let currentPieceColor = null;
+let currentX = 0;
+let currentY = 0;
+
+class Piece {
+    constructor(shape, color) {
+        this.shape = shape;
+        this.color = color;
+    }
+}
+
+function createNewPiece() {
+    const randomIndex = Math.floor(Math.random() * pieces.length);
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    currentPiece = new Piece(pieces[randomIndex], randomColor);
+    currentX = Math.floor((COLS - currentPiece.shape[0].length) / 2);
+    currentY = 0;
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw board
+    for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+            if (board[y][x]) {
+                ctx.fillStyle = board[y][x];
+                ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE - 1, BLOCK_SIZE - 1);
+            }
+        }
+    }
+    
+    // Draw current piece
+    if (currentPiece) {
+        ctx.fillStyle = currentPiece.color;
+        for (let y = 0; y < currentPiece.shape.length; y++) {
+            for (let x = 0; x < currentPiece.shape[y].length; x++) {
+                if (currentPiece.shape[y][x]) {
+                    ctx.fillRect((currentX + x) * BLOCK_SIZE, (currentY + y) * BLOCK_SIZE, 
+                                BLOCK_SIZE - 1, BLOCK_SIZE - 1);
+                }
+            }
+        }
+    }
+}
+
+function collision(x, y, piece) {
+    for (let row = 0; row < piece.shape.length; row++) {
+        for (let col = 0; col < piece.shape[row].length; col++) {
+            if (piece.shape[row][col]) {
+                let newX = x + col;
+                let newY = y + row;
+                if (newX < 0 || newX >= COLS || newY >= ROWS || 
+                    (newY >= 0 && board[newY][newX])) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function merge() {
+    for (let y = 0; y < currentPiece.shape.length; y++) {
+        for (let x = 0; x < currentPiece.shape[y].length; x++) {
+            if (currentPiece.shape[y][x]) {
+                board[currentY + y][currentX + x] = currentPiece.color;
+            }
+        }
+    }
+}
+
+function rotate(piece) {
+    let newShape = Array(piece.shape[0].length).fill()
+        .map(() => Array(piece.shape.length).fill(0));
+    
+    for (let y = 0; y < piece.shape.length; y++) {
+        for (let x = 0; x < piece.shape[y].length; x++) {
+            newShape[x][piece.shape.length - 1 - y] = piece.shape[y][x];
+        }
+    }
+    return newShape;
+}
+
+function clearLines() {
+    let linesCleared = 0;
+    for (let y = ROWS - 1; y >= 0; y--) {
+        if (board[y].every(cell => cell !== 0)) {
+            board.splice(y, 1);
+            board.unshift(Array(COLS).fill(0));
+            linesCleared++;
+            y++;
+        }
+    }
+    if (linesCleared > 0) {
+        score += linesCleared * 100;
+        scoreElement.textContent = score;
+    }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (!currentPiece) return;
+    
+    switch (e.code) {
+        case 'ArrowLeft':
+            if (!collision(currentX - 1, currentY, currentPiece)) {
+                currentX--;
+            }
+            break;
+        case 'ArrowRight':
+            if (!collision(currentX + 1, currentY, currentPiece)) {
+                currentX++;
+            }
+            break;
+        case 'ArrowDown':
+            if (!collision(currentX, currentY + 1, currentPiece)) {
+                currentY++;
+            }
+            break;
+        case 'ArrowUp':
+            let rotated = { shape: rotate(currentPiece.shape), color: currentPiece.color };
+            if (!collision(currentX, currentY, rotated)) {
+                currentPiece.shape = rotated.shape;
+            }
+            break;
+    }
+    draw();
+});
+
+function gameLoop() {
+    if (!currentPiece) {
+        createNewPiece();
+        if (collision(currentX, currentY, currentPiece)) {
+            // Game Over
+            board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+            score = 0;
+            scoreElement.textContent = score;
+        }
+    }
+
+    if (!collision(currentX, currentY + 1, currentPiece)) {
+        currentY++;
+    } else {
+        merge();
+        clearLines();
+        currentPiece = null;
+    }
+    
+    draw();
+    setTimeout(gameLoop, 500);
+}
+
+gameLoop();
+</script>
+</body></html>
